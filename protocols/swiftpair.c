@@ -98,7 +98,8 @@ void scene_swiftpair_display_name_on_enter(void* _ctx) {
     text_input_set_result_callback(
         text_input, display_name_callback, ctx, cfg->display_name, sizeof(cfg->display_name), true);
 
-    text_input_set_minimum_length(text_input, 0);
+    // lol
+    //text_input_set_minimum_length(text_input, 0);
 
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewTextInput);
 }

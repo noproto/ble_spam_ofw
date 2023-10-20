@@ -14,7 +14,9 @@ void scene_config_on_enter(void* _ctx) {
     VariableItemList* list = ctx->variable_item_list;
     variable_item_list_reset(list);
 
-    variable_item_list_set_header(list, ctx->attack->title);
+    // Not implemented yet, will move this to one of the callbacks when it is ready
+    //canvas_set_font(canvas, FontPrimary);
+    //canvas_draw_str(canvas, 4, 11, ctx->attack->title);
     uint8_t item_count = 0;
     if(ctx->attack->protocol && ctx->attack->protocol->config_list) {
         item_count = ctx->attack->protocol->config_list(ctx);

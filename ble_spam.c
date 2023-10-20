@@ -478,7 +478,7 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             state->index + 1,
             ATTACKS_COUNT,
             protocol ? protocol->get_name(&payload->cfg) : "Everything");
-        canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 21, str);
+        canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 24, str);
 
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 4, 34, attack->title);
