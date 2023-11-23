@@ -18,4 +18,4 @@ Proximity Pair IDs from https://github.com/ECTO-1A/AppleJuice/
 
 Airtag ID from https://techryptic.github.io/2023/09/01/Annoying-Apple-Fans/
 
-Ported/backported by @noproto
+Ported/backported by @noproto and @JulanDeAlb

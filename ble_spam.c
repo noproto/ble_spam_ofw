@@ -610,7 +610,7 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
         }
 
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 4, 33, attack->title);
+        canvas_draw_str(canvas, 4, 35, attack->title);
 
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str(canvas, 4, 46, attack->text);
