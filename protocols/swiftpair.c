@@ -4,32 +4,32 @@
 // Hacked together by @Willy-JL and @Spooks4576
 // Documentation at https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/bluetooth-swift-pair
 
-static const char* swiftpair_get_name(const ProtocolCfg* _cfg) {
-    const SwiftpairCfg* cfg = &_cfg->swiftpair;
-    UNUSED(cfg);
+const char* names[] = {
+    "Flipper 🐬",
+};
+const uint8_t names_count = COUNT_OF(names);
+
+static const char* get_name(const Payload* payload) {
+    UNUSED(payload);
     return "SwiftPair";
 }
 
-static void swiftpair_make_packet(uint8_t* _size, uint8_t** _packet, const ProtocolCfg* _cfg) {
-    const SwiftpairCfg* cfg = _cfg ? &_cfg->swiftpair : NULL;
+static void make_packet(uint8_t* _size, uint8_t** _packet, Payload* payload) {
+    SwiftpairCfg* cfg = payload ? &payload->cfg.swiftpair : NULL;
 
-    const char* display_name;
-    if(cfg && cfg->display_name[0] != '\0') {
-        display_name = cfg->display_name;
-    } else {
-        const char* names[] = {
-            //"Assquach💦",
-            "Flipper 🐬",
-            //"iOS 17 🍎",
-            //"Kink💦",
-            //"👉👌",
-            //"🔵🦷",
-        };
-        display_name = names[rand() % COUNT_OF(names)];
+    const char* name;
+    switch(cfg ? payload->mode : PayloadModeRandom) {
+    case PayloadModeRandom:
+    default:
+        name = names[rand() % names_count];
+        break;
+    case PayloadModeValue:
+        name = cfg->name;
+        break;
     }
-    uint8_t display_name_len = strlen(display_name);
+    uint8_t name_len = strlen(name);
 
-    uint8_t size = 7 + display_name_len;
+    uint8_t size = 7 + name_len;
     uint8_t* packet = malloc(size);
     uint8_t i = 0;
 
@@ -40,74 +40,91 @@ static void swiftpair_make_packet(uint8_t* _size, uint8_t** _packet, const Proto
     packet[i++] = 0x03; // Microsoft Beacon ID
     packet[i++] = 0x00; // Microsoft Beacon Sub Scenario
     packet[i++] = 0x80; // Reserved RSSI Byte
-    memcpy(&packet[i], display_name, display_name_len); // Display Name
-    i += display_name_len;
+    memcpy(&packet[i], name, name_len); // Device Name
+    i += name_len;
 
     *_size = size;
     *_packet = packet;
 }
 
 enum {
-    ConfigDisplayName,
+    _ConfigExtraStart = ConfigExtraStart,
+    ConfigName,
+    ConfigInfoRequire,
+    ConfigCOUNT,
 };
 static void config_callback(void* _ctx, uint32_t index) {
     Ctx* ctx = _ctx;
     scene_manager_set_scene_state(ctx->scene_manager, SceneConfig, index);
     switch(index) {
-    case ConfigDisplayName:
-        scene_manager_next_scene(ctx->scene_manager, SceneSwiftpairDisplayName);
+    case ConfigName:
+        scene_manager_next_scene(ctx->scene_manager, SceneSwiftpairName);
+        break;
+    case ConfigInfoRequire:
+        break;
     default:
+        ctx->fallback_config_enter(ctx, index);
         break;
     }
 }
-static uint8_t swiftpair_config_list(Ctx* ctx) {
-    SwiftpairCfg* cfg = &ctx->attack->payload.cfg.swiftpair;
+static void extra_config(Ctx* ctx) {
+    Payload* payload = &ctx->attack->payload;
+    SwiftpairCfg* cfg = &payload->cfg.swiftpair;
     VariableItemList* list = ctx->variable_item_list;
-    uint8_t item_count = 0;
     VariableItem* item;
 
-    item_count++;
     item = variable_item_list_add(list, "Display Name", 0, NULL, NULL);
     variable_item_set_current_value_text(
-        item, cfg->display_name[0] != '\0' ? cfg->display_name : "Random");
+        item, payload->mode == PayloadModeRandom ? "Random" : cfg->name);
+
+    variable_item_list_add(list, "Requires enabling SwiftPair", 0, NULL, NULL);
 
     variable_item_list_set_enter_callback(list, config_callback, ctx);
+}
 
-    return item_count;
+static uint8_t config_count(const Payload* payload) {
+    UNUSED(payload);
+    return ConfigCOUNT - ConfigExtraStart - 1;
 }
 
 const Protocol protocol_swiftpair = {
     .icon = &I_windows,
-    .get_name = swiftpair_get_name,
-    .make_packet = swiftpair_make_packet,
-    .config_list = swiftpair_config_list,
+    .get_name = get_name,
+    .make_packet = make_packet,
+    .extra_config = extra_config,
+    .config_count = config_count,
 };
 
-static void display_name_callback(void* _ctx) {
+static void name_callback(void* _ctx) {
     Ctx* ctx = _ctx;
+    Payload* payload = &ctx->attack->payload;
+    payload->mode = PayloadModeValue;
     scene_manager_previous_scene(ctx->scene_manager);
 }
-void scene_swiftpair_display_name_on_enter(void* _ctx) {
+void scene_swiftpair_name_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
-    SwiftpairCfg* cfg = &ctx->attack->payload.cfg.swiftpair;
+    Payload* payload = &ctx->attack->payload;
+    SwiftpairCfg* cfg = &payload->cfg.swiftpair;
     TextInput* text_input = ctx->text_input;
     text_input_reset(text_input);
 
-    text_input_set_header_text(text_input, "Leave empty for random");
+    text_input_set_header_text(text_input, "Press back for random");
 
     text_input_set_result_callback(
-        text_input, display_name_callback, ctx, cfg->display_name, sizeof(cfg->display_name), true);
+        text_input, name_callback, ctx, cfg->name, sizeof(cfg->name), true);
 
-    // lol
     //text_input_set_minimum_length(text_input, 0);
 
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewTextInput);
 }
-bool scene_swiftpair_display_name_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+bool scene_swiftpair_name_on_event(void* _ctx, SceneManagerEvent event) {
+    Ctx* ctx = _ctx;
+    Payload* payload = &ctx->attack->payload;
+    if(event.type == SceneManagerEventTypeBack) {
+        payload->mode = PayloadModeRandom;
+    }
     return false;
 }
-void scene_swiftpair_display_name_on_exit(void* _ctx) {
+void scene_swiftpair_name_on_exit(void* _ctx) {
     UNUSED(_ctx);
 }
