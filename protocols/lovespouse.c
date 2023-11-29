@@ -1,5 +1,6 @@
 #include "lovespouse.h"
 #include "_protocols.h"
+#include <ble_spam_icons.h>
 
 // Hacked together by @Willy-JL
 // Discovered by @mandomat
@@ -139,7 +140,7 @@ static void extra_config(Ctx* ctx) {
     LovespouseCfg* cfg = &payload->cfg.lovespouse;
     VariableItemList* list = ctx->variable_item_list;
     VariableItem* item;
-    size_t value_index;
+    uint8_t value_index;
 
     item = variable_item_list_add(
         list, "Toy Mode", modes[cfg->state].count + 1, mode_changed, payload);

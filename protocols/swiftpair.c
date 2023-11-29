@@ -1,13 +1,14 @@
 #include "swiftpair.h"
 #include "_protocols.h"
+#include <ble_spam_icons.h>
 
 // Hacked together by @Willy-JL and @Spooks4576
 // Documentation at https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/bluetooth-swift-pair
 
-const char* names[] = {
+static const char* names[] = {
     "Flipper 🐬",
 };
-const uint8_t names_count = COUNT_OF(names);
+static const uint8_t names_count = COUNT_OF(names);
 
 static const char* get_name(const Payload* payload) {
     UNUSED(payload);
