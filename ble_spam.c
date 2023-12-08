@@ -196,8 +196,8 @@ bool napi_furi_hal_bt_custom_adv_stop() {
 
 static Attack attacks[] = {
     {
-        .title = "The Kitchen Sink",
-        .text = "Flood all attacks at once",
+        .title = "El Sink de la cocina",
+        .text = "Inicia todos los ataques y, ¡MOLESTA!",
         .protocol = NULL,
         .payload =
             {
@@ -206,8 +206,8 @@ static Attack attacks[] = {
             },
     },
     {
-        .title = "iOS 17 Lockup Crash",
-        .text = "Newer iPhones, long range",
+        .title = "iOS 17 - Crasheo",
+        .text = "Nuevo iPhones, mas distancia",
         .protocol = &protocol_continuity,
         .payload =
             {
@@ -219,8 +219,8 @@ static Attack attacks[] = {
             },
     },
     {
-        .title = "Apple Action Modal",
-        .text = "Lock cooldown, long range",
+        .title = "Modal de accion de Apple",
+        .text = "Reposo de bloqueo, gran distancia",
         .protocol = &protocol_continuity,
         .payload =
             {
@@ -291,8 +291,8 @@ static Attack attacks[] = {
             },
     },
     {
-        .title = "Vibrate 'em All",
-        .text = "Activate all LoveSpouse toys",
+        .title = "Hacer que vibren",
+        .text = "Activa los LoveSpouse",
         .protocol = &protocol_lovespouse,
         .payload =
             {
@@ -304,8 +304,8 @@ static Attack attacks[] = {
             },
     },
     {
-        .title = "Denial of Pleasure",
-        .text = "Disable all LoveSpouse toys",
+        .title = "Denegación de placer",
+        .text = "Deshabilita los LoveSpouse",
         .protocol = &protocol_lovespouse,
         .payload =
             {
@@ -473,7 +473,7 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             48,
             AlignLeft,
             AlignTop,
-            "\e#Bruteforce\e# cycles codes\n"
+            "\e#Fuerza Bruta\e# Codigos de ciclos\n"
             "to find popups, hold left and\n"
             "right to send manually and\n"
             "change delay",
