@@ -1,5 +1,6 @@
 #pragma once
 
+#include <notification/notification_messages.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/byte_input.h>
 #include <gui/modules/submenu.h>
@@ -7,8 +8,6 @@
 #include <gui/modules/variable_item_list.h>
 
 #include "scenes/_setup.h"
-
-#include <notification/notification.h>
 
 enum {
     ViewMain,

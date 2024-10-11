@@ -6,12 +6,6 @@
 
 This Flipper application ("FAP") spams broadcast packets to Apple, Android, and Windows devices, which may be up to 5 meters away.
 
-## Builds
-
-Published (options):
-* [FlipC.org](https://flipc.org/noproto/ble_spam_ofw?branch=master)
-  * Download the FAP at the above link then copy the FAP to its respective apps/ directory (Bluetooth) on your Flipper Zero device (using qFlipper or manually copying it to the SD)
-
 ## Credit
 
 [Original app by WillyJL](https://github.com/Flipper-XFW/Xtreme-Firmware/tree/dev/applications/external/ble_spam)

@@ -1,18 +1,53 @@
 #include "swiftpair.h"
 #include "_protocols.h"
-#include <ble_spam_icons.h>
+
+#include <storage/storage.h>
+#include <toolbox/stream/file_stream.h>
 
 // Hacked together by @Willy-JL and @Spooks4576
 // Documentation at https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/bluetooth-swift-pair
 
-static const char* names[] = {
-    "Flipper 🐬",
-};
-static const uint8_t names_count = COUNT_OF(names);
+static char names[256][sizeof(((SwiftpairCfg*)0)->name)];
+static uint8_t names_count = 0;
 
 static const char* get_name(const Payload* payload) {
     UNUSED(payload);
     return "SwiftPair";
+}
+
+static const char* random_name() {
+    if(names_count == 0) {
+        // Fill random names
+        Storage* storage = furi_record_open(RECORD_STORAGE);
+        Stream* stream = file_stream_alloc(storage);
+        FuriString* line = furi_string_alloc();
+        if(!storage_file_exists(storage, APP_DATA_PATH("swiftpair.txt"))) {
+            // Copy default names
+            storage_common_copy(
+                storage, APP_ASSETS_PATH("swiftpair.txt"), APP_DATA_PATH("swiftpair.txt"));
+        }
+        if(file_stream_open(
+               stream, APP_DATA_PATH("swiftpair.txt"), FSAM_READ, FSOM_OPEN_EXISTING)) {
+            while(stream_read_line(stream, line)) {
+                furi_string_replace_all(line, "\r", "");
+                furi_string_replace_all(line, "\n", "");
+                if(furi_string_size(line)) {
+                    strlcpy(names[names_count++], furi_string_get_cstr(line), sizeof(names[0]));
+                }
+            }
+        }
+        furi_string_free(line);
+        file_stream_close(stream);
+        stream_free(stream);
+        furi_record_close(RECORD_STORAGE);
+
+        if(names_count == 0) {
+            // Add fallback if list is empty
+            strlcpy(names[names_count++], "SwiftPair", sizeof(names[0]));
+        }
+    }
+
+    return names[rand() % names_count];
 }
 
 static void make_packet(uint8_t* _size, uint8_t** _packet, Payload* payload) {
@@ -22,7 +57,7 @@ static void make_packet(uint8_t* _size, uint8_t** _packet, Payload* payload) {
     switch(cfg ? payload->mode : PayloadModeRandom) {
     case PayloadModeRandom:
     default:
-        name = names[rand() % names_count];
+        name = random_name();
         break;
     case PayloadModeValue:
         name = cfg->name;
@@ -100,14 +135,13 @@ static void name_callback(void* _ctx) {
     Ctx* ctx = _ctx;
     Payload* payload = &ctx->attack->payload;
     payload->mode = PayloadModeValue;
-    scene_manager_previous_scene(ctx->scene_manager);
+    view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
 }
 void scene_swiftpair_name_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
     Payload* payload = &ctx->attack->payload;
     SwiftpairCfg* cfg = &payload->cfg.swiftpair;
     TextInput* text_input = ctx->text_input;
-    text_input_reset(text_input);
 
     text_input_set_header_text(text_input, "Press back for random");
 
@@ -121,11 +155,16 @@ void scene_swiftpair_name_on_enter(void* _ctx) {
 bool scene_swiftpair_name_on_event(void* _ctx, SceneManagerEvent event) {
     Ctx* ctx = _ctx;
     Payload* payload = &ctx->attack->payload;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     if(event.type == SceneManagerEventTypeBack) {
         payload->mode = PayloadModeRandom;
     }
     return false;
 }
 void scene_swiftpair_name_on_exit(void* _ctx) {
-    UNUSED(_ctx);
+    Ctx* ctx = _ctx;
+    text_input_reset(ctx->text_input);
 }

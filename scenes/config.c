@@ -2,8 +2,6 @@
 
 #include "protocols/_protocols.h"
 
-#include <notification/notification_messages.h>
-
 static void _config_bool(VariableItem* item) {
     bool* value = variable_item_get_context(item);
     *value = variable_item_get_current_value_index(item);
@@ -32,7 +30,7 @@ static void config_callback(void* _ctx, uint32_t index) {
         break;
     case ConfigLockKeyboard:
         ctx->lock_keyboard = true;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         notification_message_block(ctx->notification, &sequence_display_backlight_off);
         break;
     default:
@@ -42,12 +40,8 @@ static void config_callback(void* _ctx, uint32_t index) {
 void scene_config_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
     VariableItemList* list = ctx->variable_item_list;
-    variable_item_list_reset(list);
 
     //variable_item_list_set_header(list, ctx->attack->title);
-
-    //canvas_set_font(canvas, FontPrimary);
-    //canvas_draw_str(canvas, 4, 11, ctx->attack->title);
 
     config_bool(list, "Random MAC", &ctx->attack->payload.random_mac);
 
@@ -70,11 +64,15 @@ void scene_config_on_enter(void* _ctx) {
 }
 
 bool scene_config_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 
 void scene_config_on_exit(void* _ctx) {
-    UNUSED(_ctx);
+    Ctx* ctx = _ctx;
+    variable_item_list_reset(ctx->variable_item_list);
 }

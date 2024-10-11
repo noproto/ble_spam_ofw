@@ -1,6 +1,5 @@
 #include "lovespouse.h"
 #include "_protocols.h"
-#include <ble_spam_icons.h>
 
 // Hacked together by @Willy-JL
 // Discovered by @mandomat
@@ -12,15 +11,35 @@ typedef struct {
 } LovespouseMode;
 
 static const LovespouseMode plays[] = {
-    {0xE49C6C, "Classic 1"},       {0xE7075E, "Classic 2"},       {0xE68E4F, "Classic 3"},
-    {0xE1313B, "Classic 4"},       {0xE0B82A, "Classic 5"},       {0xE32318, "Classic 6"},
-    {0xE2AA09, "Classic 7"},       {0xED5DF1, "Classic 8"},       {0xECD4E0, "Classic 9"},
-    {0xD41F5D, "Independent 1-1"}, {0xD7846F, "Independent 1-2"}, {0xD60D7E, "Independent 1-3"},
-    {0xD1B20A, "Independent 1-4"}, {0xD0B31B, "Independent 1-5"}, {0xD3A029, "Independent 1-6"},
-    {0xD22938, "Independent 1-7"}, {0xDDDEC0, "Independent 1-8"}, {0xDC57D1, "Independent 1-9"},
-    {0xA4982E, "Independent 2-1"}, {0xA7031C, "Independent 2-2"}, {0xA68A0D, "Independent 2-3"},
-    {0xA13579, "Independent 2-4"}, {0xA0BC68, "Independent 2-5"}, {0xA3275A, "Independent 2-6"},
-    {0xA2AE4B, "Independent 2-7"}, {0xAD59B3, "Independent 2-8"}, {0xACD0A2, "Independent 2-9"},
+    // clang-format off
+    {0xE49C6C, "Classic 1"},
+    {0xE7075E, "Classic 2"},
+    {0xE68E4F, "Classic 3"},
+    {0xE1313B, "Classic 4"},
+    {0xE0B82A, "Classic 5"},
+    {0xE32318, "Classic 6"},
+    {0xE2AA09, "Classic 7"},
+    {0xED5DF1, "Classic 8"},
+    {0xECD4E0, "Classic 9"},
+    {0xD41F5D, "Independent 1-1"},
+    {0xD7846F, "Independent 1-2"},
+    {0xD60D7E, "Independent 1-3"},
+    {0xD1B20A, "Independent 1-4"},
+    {0xD0B31B, "Independent 1-5"},
+    {0xD3A029, "Independent 1-6"},
+    {0xD22938, "Independent 1-7"},
+    {0xDDDEC0, "Independent 1-8"},
+    {0xDC57D1, "Independent 1-9"},
+    {0xA4982E, "Independent 2-1"},
+    {0xA7031C, "Independent 2-2"},
+    {0xA68A0D, "Independent 2-3"},
+    {0xA13579, "Independent 2-4"},
+    {0xA0BC68, "Independent 2-5"},
+    {0xA3275A, "Independent 2-6"},
+    {0xA2AE4B, "Independent 2-7"},
+    {0xAD59B3, "Independent 2-8"},
+    {0xACD0A2, "Independent 2-9"},
+    // clang-format on
 };
 
 static const LovespouseMode stops[] = {
@@ -196,19 +215,19 @@ static void mode_callback(void* _ctx, uint32_t index) {
     LovespouseCfg* cfg = &payload->cfg.lovespouse;
     if(index == 0) {
         payload->mode = PayloadModeRandom;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
     } else if(index == modes[cfg->state].count + 1U) {
         scene_manager_next_scene(ctx->scene_manager, SceneLovespouseModeCustom);
-    } else if(modes[cfg->state].count + 2U) {
+    } else if(index == modes[cfg->state].count + 2U) {
         payload->mode = PayloadModeBruteforce;
         payload->bruteforce.counter = 0;
         payload->bruteforce.value = cfg->mode;
         payload->bruteforce.size = 3;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
     } else {
         payload->mode = PayloadModeValue;
         cfg->mode = modes[cfg->state].modes[index - 1].value;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
     }
 }
 void scene_lovespouse_mode_on_enter(void* _ctx) {
@@ -217,7 +236,6 @@ void scene_lovespouse_mode_on_enter(void* _ctx) {
     LovespouseCfg* cfg = &payload->cfg.lovespouse;
     Submenu* submenu = ctx->submenu;
     uint32_t selected = 0;
-    submenu_reset(submenu);
 
     submenu_add_item(submenu, "Random", 0, mode_callback, ctx);
     if(payload->mode == PayloadModeRandom) {
@@ -248,12 +266,16 @@ void scene_lovespouse_mode_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewSubmenu);
 }
 bool scene_lovespouse_mode_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_lovespouse_mode_on_exit(void* _ctx) {
-    UNUSED(_ctx);
+    Ctx* ctx = _ctx;
+    submenu_reset(ctx->submenu);
 }
 
 static void mode_custom_callback(void* _ctx) {
@@ -263,8 +285,7 @@ static void mode_custom_callback(void* _ctx) {
     payload->mode = PayloadModeValue;
     cfg->mode =
         (ctx->byte_store[0] << 0x10) + (ctx->byte_store[1] << 0x08) + (ctx->byte_store[2] << 0x00);
-    scene_manager_previous_scene(ctx->scene_manager);
-    scene_manager_previous_scene(ctx->scene_manager);
+    view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
 }
 void scene_lovespouse_mode_custom_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
@@ -284,8 +305,12 @@ void scene_lovespouse_mode_custom_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewByteInput);
 }
 bool scene_lovespouse_mode_custom_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_lovespouse_mode_custom_on_exit(void* _ctx) {

