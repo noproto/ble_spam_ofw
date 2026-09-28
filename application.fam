@@ -1,15 +1,16 @@
 App(
     appid="ble_spam",
-    name="BLE Spam",
+    name="BLE Adv Test",
     apptype=FlipperAppType.EXTERNAL,
     targets=["f7"],
-    entry_point="ble_spam",
+    entry_point="ble_adv_test",
+    # Keep the legacy implementation for review, but never link its raw HCI paths.
+    sources=["test_app/*.c"],
     requires=["gui"],
     stack_size=5 * 1024,
     fap_icon="ble_spam_10px.png",
     fap_category="Bluetooth",
-    fap_icon_assets="icons",
     fap_author="@Willy-JL @ECTO-1A @Spooks4576",
-    fap_version="4.2",
-    fap_description="Flood BLE advertisements to cause spammy and annoying popups/notifications",
+    fap_version="5.0",
+    fap_description="Fixed BLE advertisement test using OFW 1.4.3 extra beacon API",
 )
